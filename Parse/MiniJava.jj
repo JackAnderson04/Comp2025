@@ -197,6 +197,7 @@ Absyn.ClassDecl MainClassDeclaration(LinkedList<Absyn.ClassDecl> cl) :
 	LinkedList<Absyn.Stmt> stmts         = new LinkedList<Absyn.Stmt>();
 }
 {
+	(
 	"class" name = <ID> "{" "public" "static" "void" "main"
 		"(" "String" "[" "]" arg = <ID> ")"
 		{ formals.add(new Absyn.Formal(
@@ -207,7 +208,7 @@ Absyn.ClassDecl MainClassDeclaration(LinkedList<Absyn.ClassDecl> cl) :
 		{ locals.add(var); } )*
 	(stmt = Statement() { stmts.add(stmt); } )*
 	"}" "}"
-
+	)
 		{
 
 		methods.add(new Absyn.MethodDecl(null, 
@@ -286,8 +287,10 @@ Absyn.VarDecl VarDeclaration() :
 	Absyn.Expr init = null;
 }
 {
+	(
 	type = Type() name = <ID> [ "=" init = Expression() ] ";"
 	{ return new Absyn.VarDecl(type, name.toString(), init); }
+	)
 }
 
 // MethodDeclaration 	::= 	"public" ( "synchronized" )? Type Identifier "(" ( Type Identifier ( "," Type Identifier )* )? ")" "{" ( VarDeclaration )* ( Statement )* "return" Expression ";" "}"
@@ -313,7 +316,7 @@ Absyn.MethodDecl MethodDeclaration() :
       ( "," paramType = Type() paramName = <ID> { formals.add(new Absyn.Formal(paramType, paramName.toString())); } )* ]
     ")"
     "{"
-    ( var = VarDeclaration() { locals.add(var); } )*  // Variable declarations inside the method
+    (var = VarDeclaration() { locals.add(var); } )*  // Variable declarations inside the method
     ( stmt = Statement() { stmts.add(stmt); } )*      // Method body statements
     ["return" expr = Expression() ";"] 
     {
@@ -381,10 +384,7 @@ Absyn.Stmt AssignmentStatement()  :
 {
 	lhs = Expression() //lhs should call assignableExpr.
 	rhs = Expression()
-	{
-		return new Absyn.AssignStmt(lhs,rhs);
-
-	}
+	{return new Absyn.AssignStmt(lhs, rhs);}
 }
 
 
@@ -407,45 +407,104 @@ Absyn.Type Type() :
 {
     "int" { t = new Absyn.IntegerType(); return t;}
   | "boolean" { t = new Absyn.BooleanType(); return t;} 
-  | "void"   {t = null; } //{ t = new Absyn.VoidDecl(); return t;}
+  //| "void"   {t = null; } //{ t = new Absyn.VoidDecl(); return t;}
   | <ID>  { t = new Absyn.IdentifierType(token.image); return t;}
-// { return t; }
-}
-
-Absyn.Expr PrimaryExpression() :
-{
-    Absyn.Expr e;
-	Token id;
-}
-{
-    e = Literal() 
-  | id = <ID> { e = new Absyn.IdentifierExpr(id.image); } 
-  | "(" e = Expression() ")"
-  { return e; }
 }
 
 Absyn.Expr Expression() :
-{
-    Absyn.Expr e, right;
-    Token op;
+{ 
+    Absyn.Expr e1, e2;
 }
 {
-    e = PrimaryExpression()
-    ( op = BinaryOperator() right = PrimaryExpression() 
-      { e = new Absyn.BinOpExpr(e, right); } )*
-    { return e; }
+	(
+	e1 = BinaryOperationL1()
+	|e1 = AssignableExpr()
+	)
+	{
+		return e1;
+	}	
 }
+
+Absyn.Expr BinaryOperationL1() :
+{
+    Absyn.Expr e1, e2;
+}
+{
+    e1 = BinaryOperationL2()
+    ( 
+        ( "+" e2 = BinaryOperationL2()
+            { e1 = new Absyn.AddExpr(e1, e2);})
+    |    ( "-" e2 = BinaryOperationL2()
+            { e1 = new Absyn.SubExpr(e1, e2);}) )*
+	{
+		return e1;
+	}
+}
+
+Absyn.Expr BinaryOperationL2() :
+{
+    Absyn.Expr e1, e2;
+}
+{
+    e1 = BinaryOperationL3()
+    ( 
+        ( "*" e2 = BinaryOperationL3()
+            { e1 = new Absyn.MulExpr(e1, e2);})
+    |    ( "/" e2 = BinaryOperationL3()
+            { e1 = new Absyn.DivExpr(e1, e2);}) )*
+	{
+		return e1;
+	}
+}	
+
+Absyn.Expr BinaryOperationL3() :
+{
+    Absyn.Expr e1, e2;
+}
+{
+    e1 = BinaryOperationL4()
+    ( 
+        ("<" e2 = BinaryOperationL4()
+            { e1 = new Absyn.LesserExpr(e1, e2);})
+    |    (">" e2 = BinaryOperationL4()
+            { e1 = new Absyn.GreaterExpr(e1, e2);}) 
+	|	 ("||" e2 = BinaryOperationL4()
+		 	{ e1 = new Absyn.OrExpr(e1, e2);})
+	|	 ("&&" e2 = BinaryOperationL4()
+			{ e1 = new Absyn.AndExpr(e1, e2);}) 	
+												)*
+	{
+		return e1;
+	}
+}	
+
+Absyn.Expr BinaryOperationL4() :
+{
+    Absyn.Expr left = null;
+    Token id;
+}
+{
+    (
+        "false" { left = new Absyn.FalseExpr(); }
+      | "this" { left = new Absyn.ThisExpr(); }
+      | "true" { left = new Absyn.TrueExpr(); }
+      | id = <DECIMAL> { left = new Absyn.IntegerLiteral(Integer.parseInt(id.image)); }
+      | "null" { left = new Absyn.NullExpr(); }
+      | id = <ID> { left = new Absyn.IdentifierExpr(id.image); }
+      | "(" left = Expression() ")"
+    )
+    { return left; }
+}
+
 
 Absyn.Expr Literal() :
 {
-	 Absyn.Expr e;
+	Absyn.Expr e;
 }
 {
     e = IntegerLiteral()  // This handles decimal integer literals
-  |  "true" { e = new Absyn.TrueExpr(); }
-  | "false" { e = new Absyn.FalseExpr(); }
   {
-      return e;  // Ensure you return the constructed expression
+      return e;
   }
 }
 
@@ -493,33 +552,17 @@ Token BinaryOperator() :
     t = <"+" | "-" | "*" | "/" | "==" | "!=" | "<" | ">" | "<=" | ">="> 
     { return t; }
 }
-Absyn.Expr BinaryOperation() :
-{
-    Absyn.Expr left, right;
-    Token op;
-}
-{
-    left = Expression() 
-    op = BinaryOperator() 
-    right = Expression()
-    {
-        return new Absyn.BinOpExpr(left, right);
-    }
-}
 
-/*
 
-Absyn.Expr assignableExpr() :
+Absyn.Expr AssignableExpr() :
 {
     Absyn.Type t;
+	Token name;
 	Absyn.Expr index;
-    Absyn.Expr id;
+	Absyn.Expr holder;
 }
 {
-    {t = Type();}  id = <ID> "[" "]" "=" = <DECIMAL> {return new Absyn.ArrayExpr(id, index);}
-	
-	//id = <ID> "=" "new" t = Type() "[" index = <DECIMAL> "]" {return new Absyn.ArrayExpr(id, index);}
-    //| t = Type() "="d = <ID> {return new Absyn.IdentifierExpr(id.image);}
- //|field
+    t = Type() "=" name = <ID> {return new Absyn.IdentifierExpr(name.toString());}
+	//|(t = Type())* name = <ID> "[" index = Expression() "]" ("=" holder = Expression())* {return new Absyn.ArrayExpr(name.image, index);}
+
 }
-*/
