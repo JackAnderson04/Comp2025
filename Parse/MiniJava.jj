@@ -177,10 +177,12 @@ Absyn.Program Goal() :
 	LinkedList<Absyn.ClassDecl> cl = new LinkedList<Absyn.ClassDecl>();
 }
 {
+	(
 	MainClassDeclaration(cl) 
 		( LOOKAHEAD(ClassDeclaration()) 
 		  ClassDeclaration(cl) | ThreadDeclaration(cl) )*
   <EOF>
+	)
 	{ return new Absyn.Program(cl); }
 }
 
@@ -369,11 +371,12 @@ Absyn.Stmt Statement() :
     Absyn.Stmt s;
 }
 {
+	(
 	s = Block()               // block of statements inside curly braces
   | s = IfStatement()         // conditional
   | s = WhileStatement()      // loop statement
   | s = AssignmentStatement()  // variable assignment
-
+	)
 	{return s; }
  
 }
@@ -382,8 +385,9 @@ Absyn.Stmt AssignmentStatement()  :
 	Absyn.Expr lhs, rhs;
 }
 {
-	lhs = Expression() //lhs should call assignableExpr.
-	rhs = Expression()
+	(
+	lhs = AssignableExpr() "=" rhs = Expression() ";"
+	)
 	{return new Absyn.AssignStmt(lhs, rhs);}
 }
 
@@ -394,10 +398,12 @@ Absyn.Stmt IfStatement() :
     Absyn.Stmt thenStmt, elseStmt = null;
 }
 {
+	(
     "if" "(" cond = Expression() ")" 
     thenStmt = Statement()
     [ "else" elseStmt = Statement() ]
     { return new Absyn.IfStmt(cond, thenStmt, elseStmt); }
+	)
 }
 
 Absyn.Type Type() :
@@ -418,7 +424,6 @@ Absyn.Expr Expression() :
 {
 	(
 	e1 = BinaryOperationL1()
-	|e1 = AssignableExpr()
 	)
 	{
 		return e1;
@@ -485,7 +490,8 @@ Absyn.Expr BinaryOperationL4() :
 }
 {
     (
-        "false" { left = new Absyn.FalseExpr(); }
+		"-" left = BinaryOperationL4() { left = new Absyn.NegExpr(left); }
+      | "false" { left = new Absyn.FalseExpr(); }
       | "this" { left = new Absyn.ThisExpr(); }
       | "true" { left = new Absyn.TrueExpr(); }
       | id = <DECIMAL> { left = new Absyn.IntegerLiteral(Integer.parseInt(id.image)); }
@@ -527,9 +533,11 @@ Absyn.Stmt Block() :
     Absyn.Stmt stmt; 
 }
 {
+	(
     "{" 
     (stmt = Statement() { stmts.add(stmt); } )*
     "}"
+	)
     { return new Absyn.BlockStmt(stmts); }
 }
 
@@ -556,13 +564,12 @@ Token BinaryOperator() :
 
 Absyn.Expr AssignableExpr() :
 {
-    Absyn.Type t;
-	Token name;
-	Absyn.Expr index;
-	Absyn.Expr holder;
+	Token id; 
+	Absyn.Expr index; 
 }
 {
-    t = Type() "=" name = <ID> {return new Absyn.IdentifierExpr(name.toString());}
-	//|(t = Type())* name = <ID> "[" index = Expression() "]" ("=" holder = Expression())* {return new Absyn.ArrayExpr(name.image, index);}
-
+	(
+    id = <ID> {return new Absyn.IdentifierExpr(id.image);}
+	)
 }
+
