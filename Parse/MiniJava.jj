@@ -44,12 +44,18 @@ TOKEN :
 	| < "new" >
 	| < "main" >
 	| < "String" >
+	| < "null"> 
+	| < "this" >
+	| < "Thread" > 
+	| < "extends" >
+	| < "synchronized" > 
 	// Add reserved words
 
 	/* Types. */
 	| <"true"> 
 	| <"false">
 	| <"double">
+
 	// Add Types
 
 	/* Operators. */
@@ -212,7 +218,7 @@ Absyn.ClassDecl MainClassDeclaration(LinkedList<Absyn.ClassDecl> cl) :
 	"}" "}"
 	)
 		{
-
+		// Building a method Absyn object for our Main class. We build all the formals, params and statements in our main method.
 		methods.add(new Absyn.MethodDecl(null, 
 					          false, 
 					          "main", 
@@ -220,10 +226,11 @@ Absyn.ClassDecl MainClassDeclaration(LinkedList<Absyn.ClassDecl> cl) :
 					          locals, 
 					          stmts, 	
 						  new Absyn.IntegerLiteral(0)));
+		// Build our class object putting in the Main Method stuff
 		cd = new Absyn.ClassDecl(
 			name.toString(),
 			null,
-			locals,
+			new LinkedList<Absyn.VarDecl>(),
 			methods);
 		cl.add(cd); 
 		return cd;
@@ -246,7 +253,7 @@ Absyn.ClassDecl ClassDeclaration(LinkedList<Absyn.ClassDecl> cl) :
 	"class" name = <ID> 
     [ "extends" parent = <ID> ] 
     "{" 
-    ( fd = VarDeclaration() { fields.add(fd); } )* 
+    (fd = VarDeclaration() { fields.add(fd); } )* 
     ( md =  MethodDeclaration() { methods.add(md); } )* 
     "}" 
     {
@@ -330,7 +337,7 @@ Absyn.MethodDecl MethodDeclaration() :
     
 	{return new Absyn.MethodDecl(returnType, sync ,methodName.toString(), formals, locals, stmts, expr); }
 		
-    }
+}
 // VoidDeclaration 	::= 	"public" "void" Identifier "(" ( Type Identifier ( "," Type Identifier )* )? ")" "{" ( VarDeclaration )* ( Statement )* "}"
 Absyn.VoidDecl VoidDeclaration() :
 {
@@ -386,7 +393,9 @@ Absyn.Stmt AssignmentStatement()  :
 }
 {
 	(
+	//lhs = ArrayExpr() "=" rhs = Expression() ";"
 	lhs = AssignableExpr() "=" rhs = Expression() ";"
+	
 	)
 	{return new Absyn.AssignStmt(lhs, rhs);}
 }
@@ -401,20 +410,38 @@ Absyn.Stmt IfStatement() :
 	(
     "if" "(" cond = Expression() ")" 
     thenStmt = Statement()
-    [ "else" elseStmt = Statement() ]
+    ["else" elseStmt = Statement() ]
     { return new Absyn.IfStmt(cond, thenStmt, elseStmt); }
 	)
 }
 
 Absyn.Type Type() :
-{
+{ 
     Absyn.Type t;
+	Absyn.Type ArrayType; 
+	Absyn.Expr length; 
 }
 {
-    "int" { t = new Absyn.IntegerType(); return t;}
+	(
+  //t = ArrayType() {return t;}
+  "int" { t = new Absyn.IntegerType(); return t;}
   | "boolean" { t = new Absyn.BooleanType(); return t;} 
-  //| "void"   {t = null; } //{ t = new Absyn.VoidDecl(); return t;}
+  //| "void" { t = new Absyn.VoidDecl(); return t;}
   | <ID>  { t = new Absyn.IdentifierType(token.image); return t;}
+
+	)								  
+}
+
+//******JACK LOOK HERE*********
+Absyn.Type ArrayType(): 
+{
+	Absyn.Expr length; 
+	Absyn.Type ArrayType;  
+}
+{
+  // ****HERE SPECIFICALLY******
+  "int" "[" "]" {ArrayType = new Absyn.IntegerType(); return new Absyn.ArrayType(ArrayType);}
+  |"boolean""[" "]" {ArrayType = new Absyn.BooleanType(); return new Absyn.ArrayType(ArrayType);}		
 }
 
 Absyn.Expr Expression() :
@@ -476,7 +503,13 @@ Absyn.Expr BinaryOperationL3() :
 	|	 ("||" e2 = BinaryOperationL4()
 		 	{ e1 = new Absyn.OrExpr(e1, e2);})
 	|	 ("&&" e2 = BinaryOperationL4()
-			{ e1 = new Absyn.AndExpr(e1, e2);}) 	
+			{ e1 = new Absyn.AndExpr(e1, e2);}) 
+	|	 ("==" e2 = BinaryOperationL4()
+		 	{e1 = new Absyn.EqualExpr(e1, e2);})
+	|    ("!=" e2 = BinaryOperationL4()
+			{e1 = new Absyn.NotEqExpr(e1, e2);})	
+	| 	 ("!" e2 = BinaryOperationL4()
+			{e1 = new Absyn.NotExpr(e1);})
 												)*
 	{
 		return e1;
@@ -508,12 +541,11 @@ Absyn.Expr Literal() :
 	Absyn.Expr e;
 }
 {
-    e = IntegerLiteral()  // This handles decimal integer literals
+    e = IntegerLiteral() 
   {
       return e;
   }
 }
-
 
 Absyn.Expr IntegerLiteral() :
 {
@@ -522,11 +554,10 @@ Absyn.Expr IntegerLiteral() :
 {
     decimalToken = <DECIMAL>
     
-	{return new Absyn.IntegerLiteral(Integer.parseInt(decimalToken.image));} // Convert the token to IntegerLiteral
+	{return new Absyn.IntegerLiteral(Integer.parseInt(decimalToken.image));} 
     
 }
 	
-
 Absyn.Stmt Block() :
 {
     LinkedList<Absyn.Stmt> stmts = new LinkedList<Absyn.Stmt>();
@@ -561,15 +592,19 @@ Token BinaryOperator() :
     { return t; }
 }
 
-
+//****JACK LOOK HERE*****
 Absyn.Expr AssignableExpr() :
 {
-	Token id; 
-	Absyn.Expr index; 
+    Token id;
+    Absyn.Expr name;
+    Absyn.Expr assignment;
+	Absyn.Type t; 
+	LinkedList<Absyn.Expr> index  = new LinkedList<Absyn.Expr>();
 }
 {
-	(
-    id = <ID> {return new Absyn.IdentifierExpr(id.image);}
-	)
+    LOOKAHEAD(Expression() "[") //THIS LOOKAHEAD WORKS WITH THE LINE BELOW - PRODUCES CORRECT AST DO NOT CHANGE
+    name = Expression() "[" assignment = Expression() "]"{ return new Absyn.ArrayExpr(name, assignment); }
+	//LOOKAHEAD(ArrayType() <ID>) THESE TWO LINES DO NOT WORK 
+	//|t = ArrayType() <ID> "[" <DECIMAL> "]" {return new Absyn.NewArrayExpr(t, index);}
+	|id = <ID> { return new Absyn.IdentifierExpr(id.image); }
 }
-
